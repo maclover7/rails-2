@@ -3,11 +3,37 @@ require 'thread'
 module ActionCable
   module StorageAdapter
     class Postgres < Base
-<<<<<<< HEAD
-=======
       # The storage instance used for broadcasting. Not intended for direct user use.
->>>>>>> acc6d67... Pull the action methods directly onto the adapter
       def broadcast(channel, payload)
+        with_connection do |pg_conn|
+          pg_conn.exec("NOTIFY #{channel}, '#{payload}'")
+        end
+      end
+
+<<<<<<< HEAD
+      def subscribe(channel, message_callback, success_callback = nil)
+        listener.subscribe_to(channel, message_callback, success_callback)
+      end
+
+      def unsubscribe(channel, message_callback)
+        listener.unsubscribe_to(channel, message_callback)
+      end
+
+
+      def with_connection # :nodoc:
+=======
+      def subscribe(channel, callback, success_callback = nil)
+        listener.subscribe_to(channel, callback, success_callback)
+        # Needed for channel/streams.rb#L79
+        ::EM::DefaultDeferrable.new
+      end
+
+      def unsubscribe(channel, callback)
+        listener.unsubscribe_to(channel, callback)
+      end
+
+      def with_connection(&block) # :nodoc:
+>>>>>>> 49fa67b...  Listener no longer needs to be a singleton
         ActiveRecord::Base.connection_pool.with_connection do |ar_conn|
           pg_conn = ar_conn.raw_connection
 
@@ -15,35 +41,31 @@ module ActionCable
             raise 'ActiveRecord database must be Postgres in order to use the Postgres ActionCable storage adapter'
           end
 
-          pg_conn.exec("NOTIFY #{channel}, '#{payload}'")
+          yield pg_conn
         end
       end
 
+      private
+
+      def listener
 <<<<<<< HEAD
-      def subscribe(channel, message_callback, success_callback = nil)
-        Listener.instance.subscribe_to(channel, message_callback, success_callback)
-      end
-
-      def unsubscribe(channel, message_callback)
-        Listener.instance.unsubscribe_to(channel, message_callback)
-=======
-      def subscribe(channel, callback, success_callback = nil)
-        Listener.instance.subscribe_to(channel, callback, success_callback)
-        # Needed for channel/streams.rb#L79
-        ::EM::DefaultDeferrable.new
-      end
-
-      def unsubscribe(channel, callback)
-        Listener.instance.unsubscribe_to(channel, callback)
->>>>>>> acc6d67... Pull the action methods directly onto the adapter
+        @listener ||= Listener.new(self)
       end
 
       class Listener
-        include Singleton
+        def initialize(adapter)
+          @adapter = adapter
 
-        attr_accessor :subscribers
+=======
+        @listen ||= Listener.new(self)
+      end
 
-        def initialize
+      class Listener
+        #attr_accessor :subscribers
+
+        def initialize(adapter)
+          @adapter = adapter
+>>>>>>> 49fa67b...  Listener no longer needs to be a singleton
           @subscribers = Hash.new {|h,k| h[k] = [] }
           @sync = Mutex.new
           @queue = Queue.new
@@ -55,9 +77,7 @@ module ActionCable
         end
 
         def listen
-          ActiveRecord::Base.connection_pool.with_connection do |ar_conn|
-            pg_conn = ar_conn.raw_connection
-
+          @adapter.with_connection do |pg_conn|
             loop do
               until @queue.empty?
                 value = @queue.pop(true)
